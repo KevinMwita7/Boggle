@@ -1,51 +1,85 @@
 import edu.princeton.cs.algs4.Digraph;
 import edu.princeton.cs.algs4.In;
 import edu.princeton.cs.algs4.StdOut;
+import edu.princeton.cs.algs4.Bag;
 import edu.princeton.cs.algs4.SET;
-import edu.princeton.cs.algs4.TST;
-import edu.princeton.cs.algs4.Queue;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Arrays;
 
 public class BoggleSolver {
+    private final String[] dictionary;
+    private Map<Character, Bag<Integer>> charLocations;
     private Digraph digraph;
     private SET<String> validWords;
-    private final TST<Integer> trie = new TST<>();
+//    TST<Integer> trie = new TST<>();
+
+    private static class Cell {
+        int row;
+        int col;
+
+        public Cell(int row, int col) {
+            this.row = row;
+            this.col = col;
+        }
+
+        @Override
+        public String toString() {
+            return "(" + row + "," + col + ")";
+        }
+    }
 
     // Initializes the data structure using the given array of strings as the dictionary.
     // (You can assume each word in the dictionary contains only the uppercase letters A through Z.)
     public BoggleSolver(String[] dictionary) {
+        this.dictionary = new String[dictionary.length];
+
         for (int i = 0; i < dictionary.length; ++i) {
-            trie.put(dictionary[i], i);
+//            trie.put(dictionary[i], i);
+            this.dictionary[i] = dictionary[i];
         }
     }
 
     // Returns the set of all valid words in the given Boggle board, as an Iterable.
     public Iterable<String> getAllValidWords(BoggleBoard board) {
+        charLocations = new LinkedHashMap<>();
         digraph = new Digraph(board.rows() * board.cols());
         validWords = new SET<>();
 
-        // Build digraph of a character and its neighbours
+        // Build digraph and a map of locations where a char is located on the board
         for (int i = 0; i < board.rows(); ++i) {
             for (int j = 0; j < board.cols(); ++j) {
+                char letter = board.getLetter(i, j);
                 int pos = i * board.cols() + j;
+                if (!charLocations.containsKey(letter)) {
+                    charLocations.put(letter, new Bag<>());
+                }
 
-                for (int[] neighbour : getNeighbours(i, j)) {
-                    if (isValidCell(neighbour[0], neighbour[1], board.rows(), board.cols())) {
-                        digraph.addEdge(pos, neighbour[0] * board.cols() + neighbour[1]);
+                charLocations.get(letter).add(pos);
+
+                for (Cell c : getNeighbours(new Cell(i, j))) {
+                    if (isValidCell(c, board.rows(), board.cols())) {
+                        digraph.addEdge(pos, c.row * board.cols() + c.col);
                     }
                 }
             }
         }
 
-        // Loop through every cell on board and build possible words
-        for (int i = 0; i < board.rows(); ++i) {
-            for (int j = 0; j < board.cols(); ++j) {
-                StringBuilder sb = new StringBuilder();
-                boolean[] visited = new boolean[board.rows() * board.cols()];
-                sb.append(board.getLetter(i, j));
-                // Q is almost always followed by U
-                if (board.getLetter(i, j) == 'Q') sb.append('U');
-                visited[i * board.cols() + j] = true;
-                doDfs(board, sb, visited, new int[]{i, j}, board.cols());
+        // Try and locate every word on the board
+        for (String word : dictionary) {
+//            if (!word.equals("REQUIRE")) continue;
+
+            StringBuilder sb = new StringBuilder();
+            char firstChar = word.charAt(0);
+
+            if (charLocations.containsKey(firstChar)) {
+                sb.append(firstChar);
+                for (int location : charLocations.get(firstChar)) {
+                    boolean[] visited = new boolean[board.rows() * board.cols()];
+                    visited[location] = true;
+                    doDfs(word, 0, sb, visited, location);
+                }
             }
         }
 
@@ -56,7 +90,7 @@ public class BoggleSolver {
     // Returns the score of the given word if it is in the dictionary, zero otherwise.
     // (You can assume the word contains only the uppercase letters A through Z.)
     public int scoreOf(String word) {
-        if (word.length() < 3 || !trie.contains(word)) return 0;
+        if (word.length() < 3 || Arrays.binarySearch(dictionary, word) < 0) return 0;
 
         switch (word.length()) {
             case 3:
@@ -73,50 +107,51 @@ public class BoggleSolver {
         }
     }
 
-    private void doDfs(BoggleBoard board, StringBuilder sb, boolean[] visited, int[] cell, int cols) {
-        if (sb.length() >= 3) {
-            Queue<String> matchingPrefixes = (Queue<String>) trie.keysWithPrefix(sb.toString());
-            if (matchingPrefixes.isEmpty()) return;
-            if (trie.contains(sb.toString())) validWords.add(sb.toString());
+    private void doDfs(String word, int i, StringBuilder sb, boolean[] visited, int source) {
+        if (sb.length() >= 3 && word.equals(sb.toString())) {
+            validWords.add(word);
         }
 
-        int current = cell[0] * cols + cell[1];
+        if (i == word.length() - 1) return;
 
-        for (int neighbour : digraph.adj(current)) {
-            if (!visited[neighbour]) {
-                visited[neighbour] = true;
-                int i = neighbour / cols;
-                int j = neighbour - (i * cols);
-                char letter = board.getLetter(i, j);
-                sb.append(board.getLetter(i, j));
-                // Q is almost always followed by U
-                if (letter == 'Q') sb.append('U');
-                doDfs(board, sb, visited, new int[]{i, j}, cols);
-                // Delete extra U appended when Q was encountered
-                if (letter == 'Q') sb.deleteCharAt(sb.length() - 1);
-                sb.deleteCharAt(sb.length() - 1);
-                visited[neighbour] = false;
+        char nextChar = word.charAt(i + 1);
+
+        // If characters do not exist on board, don't bother
+        if (!charLocations.containsKey(nextChar)) return;
+
+        // Trace path from current char to next one in word
+        for (int neighbour : digraph.adj(source)) {
+            for (int nextCharLocation : charLocations.get(nextChar)) {
+                if (neighbour == nextCharLocation && !visited[neighbour]) {
+                    visited[neighbour] = true;
+                    sb.append(nextChar);
+//                    StdOut.println(word + " { sb=" + sb + " i=" + i + " currentChar=" + word.charAt(i) + " currentCharLocation=" + source +
+//                            " nextChar=" + nextChar + " nextCharLocation=" + nextCharLocation + " }");
+                    doDfs(word, i + 1, sb, visited, nextCharLocation);
+                    sb.deleteCharAt(sb.length() - 1);
+                    visited[neighbour] = false;
+                }
             }
         }
     }
 
-    private int[][] getNeighbours(int row, int col) {
-        return new int[][] {
+    private Cell[] getNeighbours(Cell c) {
+        return new Cell[] {
                 // Horizontal and vertical neighbours
-                new int[]{row - 1, col},
-                new int[]{row + 1, col},
-                new int[]{row, col - 1},
-                new int[]{row, col + 1},
+                new Cell(c.row - 1, c.col),
+                new Cell(c.row + 1, c.col),
+                new Cell(c.row, c.col - 1),
+                new Cell(c.row, c.col + 1),
                 // Diagonal neighbours
-                new int[]{row - 1, col - 1},
-                new int[]{row - 1, col + 1},
-                new int[]{row + 1, col - 1},
-                new int[]{row + 1, col + 1}
+                new Cell(c.row - 1, c.col - 1),
+                new Cell(c.row - 1, c.col + 1),
+                new Cell(c.row + 1, c.col - 1),
+                new Cell(c.row + 1, c.col + 1)
         };
     }
 
-    private boolean isValidCell(int i, int j, int rows, int cols) {
-        return i >= 0 && i < rows && j >= 0 && j < cols;
+    private boolean isValidCell(Cell c, int rows, int cols) {
+        return c.row >= 0 && c.row < rows && c.col >= 0 && c.col < cols;
     }
 
     public static void main(String[] args) {
@@ -126,7 +161,7 @@ public class BoggleSolver {
         BoggleBoard board = new BoggleBoard(args[1]);
         int score = 0;
         for (String word : solver.getAllValidWords(board)) {
-            StdOut.println(word);
+//            StdOut.println(word);
             score += solver.scoreOf(word);
         }
         StdOut.println("Score = " + score);
