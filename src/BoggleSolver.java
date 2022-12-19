@@ -46,12 +46,17 @@ public class BoggleSolver {
         charLocations = new LinkedHashMap<>();
         digraph = new Digraph(board.rows() * board.cols());
         validWords = new SET<>();
+        // Boolean flag to check whether the board just contains Q
+        boolean boardFullOfQs = true;
 
         // Build digraph and a map of locations where a char is located on the board
         for (int i = 0; i < board.rows(); ++i) {
             for (int j = 0; j < board.cols(); ++j) {
                 char letter = board.getLetter(i, j);
                 int pos = i * board.cols() + j;
+
+                if (letter != 'Q') boardFullOfQs = false;
+
                 if (!charLocations.containsKey(letter)) {
                     charLocations.put(letter, new Bag<>());
                 }
@@ -66,19 +71,34 @@ public class BoggleSolver {
             }
         }
 
-        // Try and locate every word on the board
-        for (String word : dictionary) {
-//            if (!word.equals("REQUIRE")) continue;
+        // Board just contains the letter Q.
+        // Don't DFS as this is the worst case for this BoggleSolver algorithm. Takes almost forever to finish
+        if (boardFullOfQs) {
+            StringBuilder sb = new StringBuilder("QUQU");
+            for (String word : dictionary) {
+                if (sb.toString().equals(word) && sb.length() <= (board.cols() * board.rows() * 2)) {
+                    validWords.add(sb.toString());
+                    sb.append("QU");
+                }
+            }
 
-            StringBuilder sb = new StringBuilder();
-            char firstChar = word.charAt(0);
+        } else {
+            // Try and locate every word on the board
+            for (String word : dictionary) {
+                StringBuilder sb = new StringBuilder();
+                char firstChar = word.charAt(0);
 
-            if (charLocations.containsKey(firstChar)) {
-                sb.append(firstChar);
-                for (int location : charLocations.get(firstChar)) {
-                    boolean[] visited = new boolean[board.rows() * board.cols()];
-                    visited[location] = true;
-                    doDfs(word, 0, sb, visited, location);
+                if (charLocations.containsKey(firstChar)) {
+                    sb.append(firstChar);
+                    // Q is almost always followed by U
+                    if (firstChar == 'Q') sb.append('U');
+                    for (int location : charLocations.get(firstChar)) {
+                        boolean[] visited = new boolean[board.rows() * board.cols()];
+                        visited[location] = true;
+                        // Skip the U on the word string
+                        if (firstChar == 'Q') doDfs(word, 1, sb, visited, location);
+                        else doDfs(word, 0, sb, visited, location);
+                    }
                 }
             }
         }
@@ -112,7 +132,7 @@ public class BoggleSolver {
             validWords.add(word);
         }
 
-        if (i == word.length() - 1) return;
+        if (i >= word.length() - 1) return;
 
         char nextChar = word.charAt(i + 1);
 
@@ -125,9 +145,15 @@ public class BoggleSolver {
                 if (neighbour == nextCharLocation && !visited[neighbour]) {
                     visited[neighbour] = true;
                     sb.append(nextChar);
-//                    StdOut.println(word + " { sb=" + sb + " i=" + i + " currentChar=" + word.charAt(i) + " currentCharLocation=" + source +
-//                            " nextChar=" + nextChar + " nextCharLocation=" + nextCharLocation + " }");
-                    doDfs(word, i + 1, sb, visited, nextCharLocation);
+
+                    // Q is almost always followed by U.
+                    // Append the U and skip the next character on the string
+                    if (nextChar == 'Q') {
+                        sb.append('U');
+                        doDfs(word, i + 2, sb, visited, neighbour);
+                        // Delete the U appended earlier
+                        sb.deleteCharAt(sb.length() - 1);
+                    } else doDfs(word, i + 1, sb, visited, neighbour);
                     sb.deleteCharAt(sb.length() - 1);
                     visited[neighbour] = false;
                 }
@@ -161,7 +187,7 @@ public class BoggleSolver {
         BoggleBoard board = new BoggleBoard(args[1]);
         int score = 0;
         for (String word : solver.getAllValidWords(board)) {
-//            StdOut.println(word);
+            StdOut.println(word);
             score += solver.scoreOf(word);
         }
         StdOut.println("Score = " + score);
